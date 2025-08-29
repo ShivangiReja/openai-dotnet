@@ -8,6 +8,7 @@ using System.ClientModel;
 using System.ClientModel.Primitives;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Threading;
@@ -257,6 +258,32 @@ public class AssistantsTests : SyncAsyncTestBase
         Assert.That(messages.Count, Is.EqualTo(1));
         Assert.That(messages[0].Id, Is.EqualTo(message.Id));
         Assert.That(messages[0].Metadata.TryGetValue("messageMetadata", out metadataValue) && metadataValue == "newValue");
+    }
+
+    [Test]
+    public async Task MyAttachmentTest()
+    {
+        AssistantClient client = GetTestClient();
+        AssistantThread thread = client.CreateThread();
+        Validate(thread);
+
+        OpenAIFileClient fileClient = GetTestClient<OpenAIFileClient>(TestScenario.Files);
+
+        using Stream stream = BinaryData.FromString("Hello! This is a test text file.").ToStream();
+        OpenAIFile file = await fileClient.UploadFileAsync(stream, "test-file.txt", FileUploadPurpose.Assistants);
+
+        MessageCreationOptions creationOptions = new MessageCreationOptions()
+        {
+            Attachments = { new MessageCreationAttachment(file.Id, new List<ToolDefinition>() { ToolDefinition.CreateFileSearch() }) },
+        };
+
+        ThreadMessage message = IsAsync
+            ? await client.CreateMessageAsync(thread.Id, MessageRole.User, ["Hello, world!"], creationOptions)
+            : client.CreateMessage(thread.Id, MessageRole.User, ["Hello, world!"], creationOptions);
+        Validate(message);
+        Assert.That(message.Content?.Count, Is.EqualTo(1));
+        Assert.That(message.Content[0], Is.Not.Null);
+        Assert.That(message.Content[0].Text, Is.EqualTo("Hello, world!"));
     }
 
     [Test]
